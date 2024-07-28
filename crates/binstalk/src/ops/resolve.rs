@@ -116,6 +116,7 @@ async fn resolve_inner(
         _ => None,
     };
 
+    // Should become Vec<Result
     let mut handles: Vec<Arc<dyn Fetcher>> = Vec::with_capacity(
         desired_targets.len() * resolvers.len()
             + if binary_name.is_some() {
@@ -146,6 +147,7 @@ async fn resolve_inner(
                             target_data.meta.disabled_strategies.as_deref()
                         {
                             if disabled_strategies.contains(&fetcher.strategy()) {
+                                // How will `cargo binstall --strategy` override this?
                                 return None;
                             }
                         }
