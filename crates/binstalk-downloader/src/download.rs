@@ -252,6 +252,7 @@ impl Download<'_> {
                 }
                 PkgFmtDecomposed::Bin => extract_bin(&mut stream, path).await,
                 PkgFmtDecomposed::Zip => extract_zip(&mut stream, path).await,
+                PkgFmtDecomposed::Bz2 => extract_bz2(&mut stream, path).await,
             };
 
             if has_data_verifier {

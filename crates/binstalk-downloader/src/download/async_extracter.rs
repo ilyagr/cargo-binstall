@@ -18,6 +18,14 @@ use crate::{
     utils::{extract_with_blocking_task, StreamReadable},
 };
 
+use async_compression::tokio::bufread::BzDecoder;
+use futures_util::{stream::FusedStream, StreamExt};
+use tokio::{
+    fs::File,
+    io::{AsyncWriteExt, BufReader},
+};
+use tokio_util::io::StreamReader;
+
 pub async fn extract_bin<S>(stream: S, path: &Path) -> Result<ExtractedFiles, DownloadError>
 where
     S: Stream<Item = Result<Bytes, DownloadError>> + Send + Sync + Unpin,
@@ -164,4 +172,80 @@ fn write_stream_to_file(mut rx: mpsc::Receiver<Bytes>, f: fs::File) -> io::Resul
     f.flush()?;
 
     f.into_inner().map_err(io::IntoInnerError::into_error)
+}
+
+/*
+pub(super) async fn extract_bin<S>(
+    stream: &mut S,
+    path: &Path,
+) -> Result<ExtractedFiles, DownloadError>
+where
+    S: Stream<Item = Result<Bytes, DownloadError>> + FusedStream + Unpin,
+{
+    // NOTE: This currently extracts to a hardcoded filename "executable".
+    // This might need refinement later to use a more appropriate name,
+    // potentially derived from the download URL if available.
+    let output_filename = Path::new("executable");
+    let target_file_path = path.join(output_filename);
+
+    debug!(
+        "Extracting Bin stream to file: {}",
+        target_file_path.display()
+    );
+
+    let mut file = File::create(&target_file_path).await?;
+    let mut extracted_files = ExtractedFiles::default();
+
+    while let Some(chunk_res) = stream.next().await {
+        let chunk = chunk_res?;
+        file.write_all(&chunk).await?;
+    }
+    file.flush().await?; // Ensure all data is written
+
+    // Add the extracted file to the list using a relative path
+    extracted_files.add_file(output_filename.to_path_buf());
+
+    Ok(extracted_files)
+}
+    */
+
+pub(super) async fn extract_bz2<S>(
+    stream: &mut S,
+    path: &Path, // This is the target directory
+) -> Result<ExtractedFiles, DownloadError>
+where
+    S: Stream<Item = Result<Bytes, DownloadError>> + FusedStream + Unpin,
+{
+    // NOTE: This currently extracts to a hardcoded filename "decompressed_file".
+    // This might need refinement later to use a more appropriate name,
+    // potentially derived from the download URL if available.
+    let output_filename = Path::new("decompressed_file");
+    let target_file_path = path.join(output_filename);
+
+    debug!(
+        "Extracting Bz2 stream to file: {}",
+        target_file_path.display()
+    );
+
+    // Create a BufReader from the stream adapter
+    let stream_reader = StreamReader::new(
+        stream.map(|res| res.map_err(|e| io::Error::new(io::ErrorKind::Other, e))),
+    );
+    let buf_reader = BufReader::new(stream_reader);
+
+    // Create the BZ2 decoder
+    let mut decoder = BzDecoder::new(buf_reader);
+
+    // Create the output file
+    let mut file = File::create(&target_file_path).await?;
+    let mut extracted_files = ExtractedFiles::new();
+
+    // Decompress and write to the file
+    tokio::io::copy(&mut decoder, &mut file).await?;
+    file.flush().await?; // Ensure all data is written
+
+    // Add the extracted file to the list using a relative path
+    extracted_files.add_file(output_filename);
+
+    Ok(extracted_files)
 }

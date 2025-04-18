@@ -22,6 +22,8 @@ pub enum PkgFmt {
     Zip,
     /// Download format is raw / binary
     Bin,
+    /// Download format is Bzip2 (uncompressed)
+    Bz2,
 }
 
 impl Default for PkgFmt {
@@ -41,6 +43,7 @@ impl PkgFmt {
             PkgFmt::Tzstd => PkgFmtDecomposed::Tar(TarBasedFmt::Tzstd),
             PkgFmt::Bin => PkgFmtDecomposed::Bin,
             PkgFmt::Zip => PkgFmtDecomposed::Zip,
+            PkgFmt::Bz2 => PkgFmtDecomposed::Bz2,
         }
     }
 
@@ -64,27 +67,33 @@ impl PkgFmt {
                 }
             }
             PkgFmt::Zip => &[".zip"],
+            PkgFmt::Bz2 => &[".bz2"],
         }
     }
 
     /// Given the pkg-url template, guess the possible pkg-fmt.
     pub fn guess_pkg_format(pkg_url: &str) -> Option<Self> {
         let mut it = pkg_url.rsplitn(3, '.');
+        let last = it.next()?;
+        let second_last = it.next();
 
-        let guess = match it.next()? {
+        let guess = match last {
             "tar" => Some(PkgFmt::Tar),
 
             "tbz2" => Some(PkgFmt::Tbz2),
-            "bz2" if it.next() == Some("tar") => Some(PkgFmt::Tbz2),
+            "bz2" => match second_last {
+                Some("tar") => Some(PkgFmt::Tbz2),
+                _ => Some(PkgFmt::Bz2), // Plain .bz2
+            },
 
             "tgz" => Some(PkgFmt::Tgz),
-            "gz" if it.next() == Some("tar") => Some(PkgFmt::Tgz),
+            "gz" if second_last == Some("tar") => Some(PkgFmt::Tgz),
 
             "txz" => Some(PkgFmt::Txz),
-            "xz" if it.next() == Some("tar") => Some(PkgFmt::Txz),
+            "xz" if second_last == Some("tar") => Some(PkgFmt::Txz),
 
             "tzstd" | "tzst" => Some(PkgFmt::Tzstd),
-            "zst" if it.next() == Some("tar") => Some(PkgFmt::Tzstd),
+            "zst" if second_last == Some("tar") => Some(PkgFmt::Tzstd),
 
             "exe" | "bin" => Some(PkgFmt::Bin),
             "zip" => Some(PkgFmt::Zip),
@@ -92,10 +101,39 @@ impl PkgFmt {
             _ => None,
         };
 
-        if it.next().is_some() {
-            guess
-        } else {
-            None
+        // Ensure we consumed the expected number of parts for tar formats
+        // or exactly one part for non-tar formats.
+        match guess {
+            Some(PkgFmt::Tbz2 | PkgFmt::Tgz | PkgFmt::Txz | PkgFmt::Tzstd)
+                if last != "tbz2"
+                    && last != "tgz"
+                    && last != "txz"
+                    && last != "tzstd"
+                    && last != "tzst" =>
+            {
+                // Requires .tar.<ext>
+                if second_last == Some("tar") && it.next().is_some() {
+                    guess
+                } else {
+                    None
+                }
+            }
+            Some(PkgFmt::Tar | PkgFmt::Bz2 | PkgFmt::Bin | PkgFmt::Zip) => {
+                // Requires only one extension part (or specific multi-part like .tar.bz2 handled above)
+                if second_last.is_none() || (last == "bz2" && second_last != Some("tar")) {
+                    guess
+                } else {
+                    None
+                }
+            }
+            _ => {
+                // Handles cases like .tbz2, .tgz, .txz, .tzstd, .tzst directly
+                if it.next().is_some() {
+                    guess
+                } else {
+                    None
+                }
+            }
         }
     }
 }
@@ -105,6 +143,7 @@ pub enum PkgFmtDecomposed {
     Tar(TarBasedFmt),
     Bin,
     Zip,
+    Bz2,
 }
 
 #[derive(Debug, Display, Copy, Clone, Eq, PartialEq)]
