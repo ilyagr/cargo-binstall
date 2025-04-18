@@ -287,6 +287,7 @@ mod test {
         collections::{HashMap, HashSet},
         ffi::OsStr,
         num::NonZeroU16,
+        os::unix::fs::MetadataExt,
     };
     use tempfile::tempdir;
 
@@ -375,6 +376,27 @@ mod test {
         assert!(!extracted_files.has_file(&dir.join("asdfcqwe")));
 
         assert!(extracted_files.has_file(&dir.join("completions/zsh")));
+
+        // redu
+        let redu_url =
+            "https://github.com/drdo/redu/releases/download/v0.2.12/redu-0.2.12-linux-x86_64.bz2";
+        let outfile = Path::new("redu-0.2.12-linux-x86_64");
+        let tempdir_placeholder = tempdir().unwrap();
+        let fullpath = tempdir_placeholder.path().join(outfile);
+
+        let extracted_files = Download::new(client.clone(), Url::parse(redu_url).unwrap())
+            .and_extract(PkgFmt::Bz2, &fullpath)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            extracted_files.get_dir(Path::new(".")).unwrap(),
+            &HashSet::from([outfile.as_os_str().into()])
+        );
+        // The compressed file is 1.75MB, the uncompressed file is 4.3MiB
+        assert_eq!(fullpath.metadata().unwrap().size() / 1_000_000, 4);
+        // TODO: Is it executable?
+        drop(tempdir_placeholder);
 
         // sccache, tgz and zip
         let sccache_config = [
