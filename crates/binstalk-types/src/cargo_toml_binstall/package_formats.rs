@@ -39,7 +39,7 @@ impl PkgFmt {
             PkgFmt::Tgz => PkgFmtDecomposed::Tar(TarBasedFmt::Tgz),
             PkgFmt::Txz => PkgFmtDecomposed::Tar(TarBasedFmt::Txz),
             PkgFmt::Tzstd => PkgFmtDecomposed::Tar(TarBasedFmt::Tzstd),
-            PkgFmt::Bin => PkgFmtDecomposed::Bin,
+            PkgFmt::Bin => PkgFmtDecomposed::Bin(SingleBinaryFmt::Plain),
             PkgFmt::Zip => PkgFmtDecomposed::Zip,
         }
     }
@@ -103,7 +103,7 @@ impl PkgFmt {
 #[derive(Debug, Copy, Clone, Eq, PartialEq)]
 pub enum PkgFmtDecomposed {
     Tar(TarBasedFmt),
-    Bin,
+    Bin(SingleBinaryFmt),
     Zip,
 }
 
@@ -119,6 +119,17 @@ pub enum TarBasedFmt {
     Txz,
     /// Download format is TAR + Zstd
     Tzstd,
+}
+
+/// The package is a single binary, possibly compressed.
+#[derive(Debug, Display, Copy, Clone, Eq, PartialEq)]
+pub enum SingleBinaryFmt {
+    /// Uncompressed
+    Plain,
+    Bzip2,
+    Gzip,
+    XZ,
+    Zstd,
 }
 
 impl From<TarBasedFmt> for PkgFmt {

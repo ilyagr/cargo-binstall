@@ -250,7 +250,7 @@ impl Download<'_> {
                 PkgFmtDecomposed::Tar(fmt) => {
                     extract_tar_based_stream(&mut stream, path, fmt).await
                 }
-                PkgFmtDecomposed::Bin => extract_bin(&mut stream, path).await,
+                PkgFmtDecomposed::Bin(fmt) => extract_bin(&mut stream, path, fmt).await,
                 PkgFmtDecomposed::Zip => extract_zip(&mut stream, path).await,
             };
 

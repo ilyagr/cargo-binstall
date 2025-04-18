@@ -17,6 +17,7 @@ async-compression = { version = "0.4.4", features = [
     "xz",
     "bzip2",
     "tokio",
+    'futures-io'
 ] }
 binstalk-types = { version = "0.9.4", path = "../binstalk-types" }
 bytes = "1.4.0"

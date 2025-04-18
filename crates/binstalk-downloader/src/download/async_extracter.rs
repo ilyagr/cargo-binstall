@@ -4,12 +4,16 @@ use std::{
     future::Future,
     io::{self, Write},
     path::{Component, Path, PathBuf},
+    pin::Pin,
 };
 
+use async_compression::tokio::bufread;
+use binstalk_types::cargo_toml_binstall::SingleBinaryFmt;
 use bytes::Bytes;
-use futures_util::Stream;
+use futures_util::{Stream, TryStreamExt};
 use tempfile::tempfile as create_tmpfile;
-use tokio::sync::mpsc;
+use tokio::{io::AsyncRead, sync::mpsc};
+use tokio_util::io::{ReaderStream, StreamReader};
 use tracing::debug;
 
 use super::{extracter::*, DownloadError, ExtractedFiles, TarBasedFmt};
@@ -18,21 +22,38 @@ use crate::{
     utils::{extract_with_blocking_task, StreamReadable},
 };
 
-pub async fn extract_bin<S>(stream: S, path: &Path) -> Result<ExtractedFiles, DownloadError>
+pub async fn extract_bin<S>(
+    stream: S,
+    path: &Path,
+    fmt: SingleBinaryFmt,
+) -> Result<ExtractedFiles, DownloadError>
 where
     S: Stream<Item = Result<Bytes, DownloadError>> + Send + Sync + Unpin,
 {
+    let reader = StreamReader::new(stream);
+    let decoded_reader: Pin<Box<dyn AsyncRead + Send + Sync>> = match fmt {
+        SingleBinaryFmt::Plain => Box::pin(reader),
+        SingleBinaryFmt::Bzip2 => Box::pin(bufread::BzDecoder::new(reader)),
+        SingleBinaryFmt::Gzip => Box::pin(bufread::GzipDecoder::new(reader)),
+        SingleBinaryFmt::XZ => Box::pin(bufread::XzDecoder::new(reader)),
+        SingleBinaryFmt::Zstd => Box::pin(bufread::ZstdDecoder::new(reader)),
+    };
+
     debug!("Writing to `{}`", path.display());
 
-    extract_with_blocking_decoder(stream, path, |rx, path| {
-        let mut extracted_files = ExtractedFiles::new();
+    extract_with_blocking_decoder(
+        ReaderStream::new(decoded_reader).map_err(DownloadError::from),
+        path,
+        |rx, path| {
+            let mut extracted_files = ExtractedFiles::new();
 
-        extracted_files.add_file(Path::new(path.file_name().unwrap()));
+            extracted_files.add_file(Path::new(path.file_name().unwrap()));
 
-        write_stream_to_file(rx, fs::File::create(path)?)?;
+            write_stream_to_file(rx, fs::File::create(path)?)?;
 
-        Ok(extracted_files)
-    })
+            Ok(extracted_files)
+        },
+    )
     .await
 }
 
