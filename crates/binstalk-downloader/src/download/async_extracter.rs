@@ -216,16 +216,7 @@ pub(super) async fn extract_bz2<S>(
 where
     S: Stream<Item = Result<Bytes, DownloadError>> + FusedStream + Unpin,
 {
-    // NOTE: This currently extracts to a hardcoded filename "decompressed_file".
-    // This might need refinement later to use a more appropriate name,
-    // potentially derived from the download URL if available.
-    let output_filename = Path::new("decompressed_file");
-    let target_file_path = path.join(output_filename);
-
-    debug!(
-        "Extracting Bz2 stream to file: {}",
-        target_file_path.display()
-    );
+    debug!("Extracting Bz2 stream to file: {}", path.display());
 
     // Create a BufReader from the stream adapter
     let stream_reader = StreamReader::new(
@@ -237,7 +228,7 @@ where
     let mut decoder = BzDecoder::new(buf_reader);
 
     // Create the output file
-    let mut file = File::create(&target_file_path).await?;
+    let mut file = File::create(path).await?;
     let mut extracted_files = ExtractedFiles::new();
 
     // Decompress and write to the file
@@ -245,7 +236,7 @@ where
     file.flush().await?; // Ensure all data is written
 
     // Add the extracted file to the list using a relative path
-    extracted_files.add_file(output_filename);
+    extracted_files.add_file(Path::new(path.file_name().unwrap()));
 
     Ok(extracted_files)
 }
